@@ -2,7 +2,7 @@ const { v4: uuidv4 } = require('uuid');
 const { getDb } = require('../config/database');
 const { encrypt, decrypt } = require('../crypto/aes');
 
-function sanitizeUser(u) {
+function sanitizeUser(u, { showPrivate = false } = {}) {
   if (!u) return null;
   return {
     id: u.id,
@@ -10,6 +10,10 @@ function sanitizeUser(u) {
     display_name: u.display_name,
     avatar_url: u.avatar_url,
     last_seen_at: u.last_seen_at,
+    bio: (showPrivate || !u.hide_bio) ? (u.bio || null) : null,
+    birth_date: (showPrivate || !u.hide_birth_date) ? (u.birth_date || null) : null,
+    hide_bio: showPrivate ? (u.hide_bio ? true : false) : undefined,
+    hide_birth_date: showPrivate ? (u.hide_birth_date ? true : false) : undefined,
   };
 }
 
@@ -86,7 +90,10 @@ function getUserChats(userId) {
     const partner_last_read_at = partner
       ? db.prepare('SELECT last_read_at FROM chat_members WHERE chat_id = ? AND user_id = ?')
           .get([chat.id, partner.id])?.last_read_at ?? 0
-      : 0;
+      : chat.type === 'group'
+        ? db.prepare('SELECT MAX(last_read_at) as maxr FROM chat_members WHERE chat_id = ? AND user_id != ?')
+            .get([chat.id, userId])?.maxr ?? 0
+        : 0;
 
     return {
       ...chat,
@@ -183,11 +190,21 @@ function getChatById(chatId, userId) {
     .prepare('SELECT * FROM messages WHERE chat_id = ? AND deleted_at IS NULL ORDER BY created_at DESC LIMIT 1')
     .get(chatId);
 
+  const partner = chat.type === 'direct' ? members.find(m => m.id !== userId) : null;
+  const partner_last_read_at = partner
+    ? db.prepare('SELECT last_read_at FROM chat_members WHERE chat_id = ? AND user_id = ?')
+        .get([chatId, partner.id])?.last_read_at ?? 0
+    : chat.type === 'group'
+      ? db.prepare('SELECT MAX(last_read_at) as maxr FROM chat_members WHERE chat_id = ? AND user_id != ?')
+          .get([chatId, userId])?.maxr ?? 0
+      : 0;
+
   return {
     ...chat,
     members,
     last_message: lastMsg ? decryptMessage(lastMsg) : null,
     unread_count: 0,
+    partner_last_read_at,
   };
 }
 
@@ -236,7 +253,7 @@ function getUserById(userId) {
   return db.prepare('SELECT * FROM users WHERE id = ?').get(userId);
 }
 
-function updateUser(userId, { username, display_name, avatar_url }) {
+function updateUser(userId, { username, display_name, avatar_url, bio, birth_date, hide_bio, hide_birth_date }) {
   const db = getDb();
   if (username !== undefined && username !== null) {
     const clean = username.trim().toLowerCase();
@@ -245,6 +262,10 @@ function updateUser(userId, { username, display_name, avatar_url }) {
   }
   if (display_name !== undefined) db.prepare('UPDATE users SET display_name = ? WHERE id = ?').run([display_name, userId]);
   if (avatar_url !== undefined) db.prepare('UPDATE users SET avatar_url = ? WHERE id = ?').run([avatar_url, userId]);
+  if (bio !== undefined) db.prepare('UPDATE users SET bio = ? WHERE id = ?').run([bio, userId]);
+  if (birth_date !== undefined) db.prepare('UPDATE users SET birth_date = ? WHERE id = ?').run([birth_date, userId]);
+  if (hide_bio !== undefined) db.prepare('UPDATE users SET hide_bio = ? WHERE id = ?').run([hide_bio ? 1 : 0, userId]);
+  if (hide_birth_date !== undefined) db.prepare('UPDATE users SET hide_birth_date = ? WHERE id = ?').run([hide_birth_date ? 1 : 0, userId]);
   return db.prepare('SELECT * FROM users WHERE id = ?').get(userId);
 }
 

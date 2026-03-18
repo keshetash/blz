@@ -10,8 +10,17 @@ export async function updateMe(payload: {
   username?: string | null;
   display_name?: string | null;
   avatar_url?: string | null;
+  bio?: string | null;
+  birth_date?: string | null;
+  hide_bio?: boolean;
+  hide_birth_date?: boolean;
 }): Promise<User> {
   const res = await client.patch<User>('/users/me', payload);
+  return res.data;
+}
+
+export async function getUserById(id: string): Promise<User> {
+  const res = await client.get<User>(`/users/${id}`);
   return res.data;
 }
 

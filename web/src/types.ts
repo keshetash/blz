@@ -5,6 +5,10 @@ export type User = {
   username?: string | null;
   display_name?: string | null;
   avatar_url?: string | null;
+  bio?: string | null;
+  birth_date?: string | null;
+  hide_bio?: boolean;
+  hide_birth_date?: boolean;
   created_at?: number;
   last_seen_at?: number | null;
   has_password?: boolean;

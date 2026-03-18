@@ -991,3 +991,455 @@ input { font: inherit; color: inherit; background: transparent; }
 }
 .confirmDelete:hover { opacity: .85; }
 .confirmDelete:disabled { opacity: .5; cursor: not-allowed; }
+
+/* ── Profile panel (sidebar bottom) ────────────────────────────────── */
+.ppTopRow {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+.ppInfo { flex: 1; min-width: 0; }
+.ppName { font-size: 15px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ppSub { font-size: 12px; color: var(--muted); margin-top: 2px; }
+.ppSettingsBtn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: var(--accent-dim);
+  color: var(--accent);
+  font-size: 13.5px;
+  font-weight: 600;
+  border: 1px solid var(--accent-border);
+  transition: background .15s;
+}
+.ppSettingsBtn:hover { background: rgba(47,129,247,.25); }
+
+/* ── Chat header clickable button ───────────────────────────────────── */
+.chHeaderBtn {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex: 1;
+  min-width: 0;
+  padding: 4px 8px;
+  border-radius: 10px;
+  text-align: left;
+  transition: background .15s;
+}
+.chHeaderBtn:hover { background: var(--panel); }
+
+/* ── Group message avatars ──────────────────────────────────────────── */
+.msg.inGroup {
+  display: flex;
+  align-items: flex-end;
+  gap: 6px;
+}
+.msgAvatarSlot {
+  width: 32px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: flex-end;
+}
+.msgSenderAvatarBtn {
+  cursor: pointer;
+  border-radius: 10px;
+  transition: opacity .15s;
+  line-height: 0;
+}
+.msgSenderAvatarBtn:hover { opacity: .8; }
+.bubbleSenderName {
+  display: block;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--accent);
+  margin-bottom: 3px;
+  text-align: left;
+  cursor: pointer;
+  background: none;
+  border: none;
+  padding: 0;
+  font-family: inherit;
+  transition: opacity .15s;
+}
+.bubbleSenderName:hover { opacity: .75; }
+
+/* ── UserProfileModal (profile view card) ───────────────────────────── */
+.profileViewCard {
+  position: relative;
+  width: min(380px, 100%);
+  background: var(--sidebar);
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  overflow: hidden;
+  box-shadow: var(--shadow);
+  animation: slideUp .2s ease;
+}
+.pvCloseBtn {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  width: 32px;
+  height: 32px;
+  border-radius: 10px;
+  background: var(--panel);
+  color: var(--muted);
+  display: grid;
+  place-items: center;
+  z-index: 2;
+  transition: background .15s, color .15s;
+}
+.pvCloseBtn:hover { background: var(--border); color: var(--text); }
+.pvLoading { padding: 48px; text-align: center; color: var(--muted); font-size: 14px; }
+.pvHeader {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 36px 24px 20px;
+  background: linear-gradient(180deg, var(--accent-dim) 0%, transparent 100%);
+  border-bottom: 1px solid var(--border);
+}
+.pvAvatarWrap {
+  width: 80px;
+  height: 80px;
+  border-radius: 24px;
+  overflow: hidden;
+  box-shadow: 0 4px 16px rgba(0,0,0,.25);
+}
+.pvAvatarImg { width: 100%; height: 100%; object-fit: cover; display: block; }
+.pvAvatarFallback {
+  width: 100%;
+  height: 100%;
+  background: var(--accent-dim);
+  color: var(--accent);
+  display: grid;
+  place-items: center;
+  font-size: 32px;
+  font-weight: 800;
+}
+.pvName { font-size: 18px; font-weight: 700; text-align: center; }
+.pvUsername { font-size: 13px; color: var(--muted); }
+.pvBody { padding: 16px 24px; display: flex; flex-direction: column; gap: 12px; }
+.pvField {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 10px 14px;
+}
+.pvFieldLabel { font-size: 11px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; margin-bottom: 3px; }
+.pvFieldValue { font-size: 14px; line-height: 1.5; }
+.pvEmpty { text-align: center; color: var(--muted); font-size: 13px; padding: 8px 0; }
+.pvFooter { padding: 0 24px 20px; }
+.pvChatBtn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  padding: 11px;
+  border-radius: 12px;
+  background: var(--accent);
+  color: #fff;
+  font-size: 14px;
+  font-weight: 600;
+  transition: opacity .15s;
+}
+.pvChatBtn:hover { opacity: .88; }
+
+/* ── GroupInfoModal ──────────────────────────────────────────────────── */
+.groupInfoCard {
+  position: relative;
+  width: min(420px, 100%);
+  max-height: 80vh;
+  background: var(--sidebar);
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  overflow-y: auto;
+  box-shadow: var(--shadow);
+  animation: slideUp .2s ease;
+}
+.groupInfoCard::-webkit-scrollbar { width: 4px; }
+.groupInfoCard::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+.giHeader {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 36px 24px 16px;
+  background: linear-gradient(180deg, var(--accent-dim) 0%, transparent 100%);
+  border-bottom: 1px solid var(--border);
+}
+.giAvatarFallback {
+  width: 72px;
+  height: 72px;
+  border-radius: 22px;
+  background: var(--accent-dim);
+  border: 2px solid var(--accent-border);
+  color: var(--accent);
+  display: grid;
+  place-items: center;
+  font-size: 28px;
+  font-weight: 800;
+}
+.giName { font-size: 18px; font-weight: 700; }
+.giMeta { font-size: 13px; color: var(--muted); }
+.giDesc {
+  margin: 12px 20px 0;
+  padding: 10px 14px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  font-size: 13.5px;
+  color: var(--text);
+  line-height: 1.5;
+}
+.giMemberLabel {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: .04em;
+  padding: 16px 20px 6px;
+}
+.giMemberList { padding: 0 8px 16px; display: flex; flex-direction: column; gap: 2px; }
+.giMemberItem {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  border-radius: 12px;
+  width: 100%;
+  text-align: left;
+  transition: background .1s;
+}
+.giMemberItem:hover { background: var(--panel); }
+.giMemberInfo { flex: 1; min-width: 0; }
+.giMemberName { font-size: 13.5px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.giMemberSub { font-size: 12px; color: var(--muted); margin-top: 1px; }
+.giBadges { display: flex; gap: 4px; flex-shrink: 0; }
+.giYouBadge, .giAdminBadge {
+  font-size: 10.5px;
+  font-weight: 700;
+  padding: 2px 7px;
+  border-radius: 6px;
+}
+.giYouBadge { background: var(--accent-dim); color: var(--accent); border: 1px solid var(--accent-border); }
+.giAdminBadge { background: rgba(63,185,80,.12); color: var(--success); border: 1px solid rgba(63,185,80,.25); }
+
+/* ── ProfileSettingsModal ─────────────────────────────────────────────── */
+.psCard {
+  width: min(480px, 100%);
+  max-height: 90vh;
+  background: var(--sidebar);
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  box-shadow: var(--shadow);
+  animation: slideUp .2s ease;
+}
+.psHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 20px 24px 0;
+  flex-shrink: 0;
+}
+.psTitle { font-size: 18px; font-weight: 700; }
+.psTabs {
+  display: flex;
+  gap: 4px;
+  padding: 14px 24px 0;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+.psTab {
+  padding: 8px 16px;
+  border-radius: 10px 10px 0 0;
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--muted);
+  transition: color .15s, background .15s;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+}
+.psTab.active {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+}
+.psTab:hover:not(.active) { color: var(--text); background: var(--panel); }
+.psBody {
+  overflow-y: auto;
+  flex: 1;
+  padding: 20px 24px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.psBody::-webkit-scrollbar { width: 4px; }
+.psBody::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+
+/* Avatar section */
+.psAvatarSection {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+.psAvatarWrap {
+  width: 90px;
+  height: 90px;
+  border-radius: 26px;
+  overflow: hidden;
+  cursor: pointer;
+  position: relative;
+  box-shadow: 0 4px 16px rgba(0,0,0,.2);
+  transition: transform .15s;
+}
+.psAvatarWrap:hover { transform: scale(1.04); }
+.psAvatarImg { width: 100%; height: 100%; object-fit: cover; display: block; }
+.psAvatarFallback {
+  width: 100%;
+  height: 100%;
+  background: var(--accent-dim);
+  color: var(--accent);
+  display: grid;
+  place-items: center;
+  font-size: 34px;
+  font-weight: 800;
+}
+.psAvatarOverlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(0,0,0,.45);
+  display: grid;
+  place-items: center;
+  color: #fff;
+  opacity: 0;
+  transition: opacity .15s;
+  border-radius: 26px;
+}
+.psAvatarWrap:hover .psAvatarOverlay { opacity: 1; }
+.psAvatarHint { font-size: 12px; color: var(--muted); }
+
+/* Fields */
+.psField { display: flex; flex-direction: column; gap: 6px; }
+.psLabel { font-size: 11.5px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
+.psInput {
+  width: 100%;
+  background: var(--panel);
+  border: 1.5px solid var(--border);
+  border-radius: var(--radius);
+  padding: 10px 14px;
+  outline: none;
+  font-size: 14px;
+  color: var(--text);
+  transition: border-color .15s;
+}
+.psInput:focus { border-color: var(--accent); }
+.psInputPrefix { position: relative; }
+.psAt {
+  position: absolute;
+  left: 14px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--muted);
+  font-size: 14px;
+  pointer-events: none;
+}
+.psInputPad { padding-left: 28px; }
+.psTextarea {
+  width: 100%;
+  background: var(--panel);
+  border: 1.5px solid var(--border);
+  border-radius: var(--radius);
+  padding: 10px 14px;
+  outline: none;
+  font-size: 14px;
+  color: var(--text);
+  font-family: inherit;
+  resize: vertical;
+  line-height: 1.5;
+  min-height: 80px;
+  transition: border-color .15s;
+}
+.psTextarea:focus { border-color: var(--accent); }
+.psPrivacyLabel {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12.5px;
+  color: var(--muted);
+  cursor: pointer;
+  user-select: none;
+}
+.psPrivacyLabel:hover { color: var(--text); }
+.psCheckbox {
+  width: 15px;
+  height: 15px;
+  accent-color: var(--accent);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.psInputWrap { position: relative; }
+.psInputWrap .psInput { padding-right: 42px; }
+.psEye {
+  position: absolute;
+  right: 12px; top: 50%;
+  transform: translateY(-50%);
+  color: var(--muted);
+  padding: 4px;
+  line-height: 0;
+  transition: color .15s;
+}
+.psEye:hover { color: var(--text); }
+.psPassStatus {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+.psError {
+  background: var(--danger-dim);
+  border: 1px solid rgba(220,38,38,.2);
+  color: var(--danger);
+  border-radius: var(--radius);
+  padding: 10px 12px;
+  font-size: 13px;
+}
+.psOk {
+  background: var(--success-dim);
+  border: 1px solid rgba(63,185,80,.2);
+  color: var(--success);
+  border-radius: var(--radius);
+  padding: 10px 12px;
+  font-size: 13px;
+}
+.psSaveBtn {
+  width: 100%;
+  background: var(--accent);
+  color: #fff;
+  border-radius: var(--radius);
+  padding: 12px;
+  font-weight: 600;
+  font-size: 14px;
+  transition: opacity .15s, transform .1s;
+  margin-top: 4px;
+}
+.psSaveBtn:hover:not(:disabled) { opacity: .9; transform: translateY(-1px); }
+.psSaveBtn:disabled { opacity: .45; cursor: not-allowed; }
+
+/* date input theming */
+input[type="date"].psInput::-webkit-calendar-picker-indicator {
+  filter: invert(0.5);
+  cursor: pointer;
+}

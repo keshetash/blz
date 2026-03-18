@@ -147,6 +147,16 @@ function runMigrations() {
     db.exec('ALTER TABLE chats ADD COLUMN description TEXT');
   } catch { /* already exists */ }
 
+  // Add profile fields: bio, birth_date, hide_bio, hide_birth_date
+  for (const col of [
+    'ALTER TABLE users ADD COLUMN bio TEXT',
+    'ALTER TABLE users ADD COLUMN birth_date TEXT',
+    'ALTER TABLE users ADD COLUMN hide_bio INTEGER NOT NULL DEFAULT 0',
+    'ALTER TABLE users ADD COLUMN hide_birth_date INTEGER NOT NULL DEFAULT 0',
+  ]) {
+    try { db.exec(col); } catch { /* already exists */ }
+  }
+
   console.log('[DB] Migrations complete');
 }
 

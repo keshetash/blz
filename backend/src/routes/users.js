@@ -14,15 +14,15 @@ router.use(authMiddleware);
 router.get('/me', (req, res) => {
   const user = getUserById(req.userId);
   if (!user) return res.status(404).json({ error: 'User not found' });
-  res.json(sanitizeUser(user));
+  res.json(sanitizeUser(user, { showPrivate: true }));
 });
 
 // PATCH /users/me
 router.patch('/me', (req, res, next) => {
   try {
-    const { username, display_name, avatar_url } = req.body;
-    const updated = updateUser(req.userId, { username, display_name, avatar_url });
-    res.json(sanitizeUser(updated));
+    const { username, display_name, avatar_url, bio, birth_date, hide_bio, hide_birth_date } = req.body;
+    const updated = updateUser(req.userId, { username, display_name, avatar_url, bio, birth_date, hide_bio, hide_birth_date });
+    res.json(sanitizeUser(updated, { showPrivate: true }));
   } catch (err) {
     if (err.message && err.message.includes('UNIQUE')) {
       return res.status(409).json({ error: 'Username already taken' });
