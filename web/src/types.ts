@@ -9,6 +9,7 @@ export type User = {
   birth_date?: string | null;
   hide_bio?: boolean;
   hide_birth_date?: boolean;
+  no_group_add?: boolean;
   created_at?: number;
   last_seen_at?: number | null;
   has_password?: boolean;
@@ -25,6 +26,7 @@ export type Message = {
   attachment_type?: string | null;
   attachment_name?: string | null;
   liked_by?: string[];
+  is_system?: boolean;
 };
 
 export type Chat = {

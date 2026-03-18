@@ -14,6 +14,7 @@ function sanitizeUser(u, { showPrivate = false } = {}) {
     birth_date: (showPrivate || !u.hide_birth_date) ? (u.birth_date || null) : null,
     hide_bio: showPrivate ? (u.hide_bio ? true : false) : undefined,
     hide_birth_date: showPrivate ? (u.hide_birth_date ? true : false) : undefined,
+    no_group_add: showPrivate ? (u.no_group_add ? true : false) : undefined,
   };
 }
 
@@ -39,6 +40,7 @@ function decryptMessage(msg) {
     attachment_type: msg.attachment_type || null,
     attachment_name: msg.attachment_name || null,
     liked_by: JSON.parse(msg.liked_by || '[]'),
+    is_system: msg.is_system ? true : false,
   };
 }
 
@@ -223,6 +225,12 @@ function addChatMember(chatId, requesterId, newUserId) {
   const existing = db.prepare('SELECT 1 FROM chat_members WHERE chat_id = ? AND user_id = ?').get([chatId, newUserId]);
   if (existing) throw Object.assign(new Error('User already in chat'), { status: 409 });
 
+  // Check if target user has blocked group adds
+  const targetUser = db.prepare('SELECT no_group_add FROM users WHERE id = ?').get(newUserId);
+  if (targetUser?.no_group_add) {
+    throw Object.assign(new Error('Этот пользователь запретил добавлять себя в группы'), { status: 403 });
+  }
+
   db.prepare('INSERT INTO chat_members (chat_id, user_id, joined_at) VALUES (?, ?, ?)').run([chatId, newUserId, Date.now()]);
   return getChatById(chatId, requesterId);
 }
@@ -236,6 +244,49 @@ function removeChatMember(chatId, requesterId, targetUserId) {
   }
   db.prepare('DELETE FROM chat_members WHERE chat_id = ? AND user_id = ?').run([chatId, targetUserId]);
   return getChatById(chatId, requesterId);
+}
+
+function leaveGroup(chatId, userId) {
+  const db = getDb();
+  const chat = db.prepare('SELECT id, type FROM chats WHERE id = ?').get(chatId);
+  if (!chat || chat.type !== 'group') throw Object.assign(new Error('Not a group'), { status: 400 });
+
+  const member = db.prepare('SELECT 1 FROM chat_members WHERE chat_id = ? AND user_id = ?').get([chatId, userId]);
+  if (!member) throw Object.assign(new Error('Not a member'), { status: 403 });
+
+  const user = db.prepare('SELECT display_name, username FROM users WHERE id = ?').get(userId);
+  const userName = user?.display_name || user?.username || 'Пользователь';
+
+  // Remove member first
+  db.prepare('DELETE FROM chat_members WHERE chat_id = ? AND user_id = ?').run([chatId, userId]);
+
+  // Get remaining members
+  const remaining = db.prepare('SELECT user_id FROM chat_members WHERE chat_id = ?').all(chatId);
+
+  // Send system message visible to remaining members
+  let sysMsg = null;
+  if (remaining.length > 0) {
+    const systemText = `${userName} покинул(а) чат`;
+    sysMsg = saveMessage(chatId, userId, systemText, {}, true);
+  }
+
+  return { sysMsg, remaining: remaining.map(r => r.user_id) };
+}
+
+function deleteDirectChat(chatId, userId) {
+  const db = getDb();
+  const chat = db.prepare('SELECT id, type FROM chats WHERE id = ?').get(chatId);
+  if (!chat) throw Object.assign(new Error('Chat not found'), { status: 404 });
+
+  const member = db.prepare('SELECT 1 FROM chat_members WHERE chat_id = ? AND user_id = ?').get([chatId, userId]);
+  if (!member) throw Object.assign(new Error('Forbidden'), { status: 403 });
+
+  if (chat.type !== 'direct') throw Object.assign(new Error('Use leave for groups'), { status: 400 });
+
+  const members = db.prepare('SELECT user_id FROM chat_members WHERE chat_id = ?').all(chatId);
+  db.prepare('DELETE FROM chats WHERE id = ?').run([chatId]);
+
+  return members.map(m => m.user_id);
 }
 
 function updateChatMetadata(chatId, requesterId, { name, avatar_url }) {
@@ -253,7 +304,7 @@ function getUserById(userId) {
   return db.prepare('SELECT * FROM users WHERE id = ?').get(userId);
 }
 
-function updateUser(userId, { username, display_name, avatar_url, bio, birth_date, hide_bio, hide_birth_date }) {
+function updateUser(userId, { username, display_name, avatar_url, bio, birth_date, hide_bio, hide_birth_date, no_group_add }) {
   const db = getDb();
   if (username !== undefined && username !== null) {
     const clean = username.trim().toLowerCase();
@@ -266,6 +317,7 @@ function updateUser(userId, { username, display_name, avatar_url, bio, birth_dat
   if (birth_date !== undefined) db.prepare('UPDATE users SET birth_date = ? WHERE id = ?').run([birth_date, userId]);
   if (hide_bio !== undefined) db.prepare('UPDATE users SET hide_bio = ? WHERE id = ?').run([hide_bio ? 1 : 0, userId]);
   if (hide_birth_date !== undefined) db.prepare('UPDATE users SET hide_birth_date = ? WHERE id = ?').run([hide_birth_date ? 1 : 0, userId]);
+  if (no_group_add !== undefined) db.prepare('UPDATE users SET no_group_add = ? WHERE id = ?').run([no_group_add ? 1 : 0, userId]);
   return db.prepare('SELECT * FROM users WHERE id = ?').get(userId);
 }
 
@@ -300,23 +352,26 @@ function getChatMessages(chatId, userId, { limit = 50, before = null } = {}) {
   return rows.reverse().map(decryptMessage);
 }
 
-function saveMessage(chatId, senderId, text, attachment = {}) {
+function saveMessage(chatId, senderId, text, attachment = {}, isSystem = false) {
   const db = getDb();
-  const member = db.prepare('SELECT 1 FROM chat_members WHERE chat_id = ? AND user_id = ?').get([chatId, senderId]);
-  if (!member) throw Object.assign(new Error('Forbidden'), { status: 403 });
+  if (!isSystem) {
+    const member = db.prepare('SELECT 1 FROM chat_members WHERE chat_id = ? AND user_id = ?').get([chatId, senderId]);
+    if (!member) throw Object.assign(new Error('Forbidden'), { status: 403 });
+  }
 
   const { ciphertext, iv, authTag } = encrypt(text || '');
   const msgId = uuidv4();
   const now = Date.now();
 
   db.prepare(
-    `INSERT INTO messages (id, chat_id, sender_id, ciphertext, iv, auth_tag, created_at, attachment_url, attachment_type, attachment_name)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    `INSERT INTO messages (id, chat_id, sender_id, ciphertext, iv, auth_tag, created_at, attachment_url, attachment_type, attachment_name, is_system)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
   ).run([
     msgId, chatId, senderId, ciphertext, iv, authTag, now,
     attachment.attachment_url || null,
     attachment.attachment_type || null,
     attachment.attachment_name || null,
+    isSystem ? 1 : 0,
   ]);
 
   return decryptMessage(db.prepare('SELECT * FROM messages WHERE id = ?').get(msgId));
@@ -352,10 +407,10 @@ function deleteMessages(chatId, senderId, messageIds) {
   return deleted;
 }
 
-// Re-export with deleteMessages added
 module.exports = {
   getUserChats, createGroupChat, getOrCreateDirectChat, getChatById,
   markChatAsRead, addChatMember, removeChatMember, updateChatMetadata,
+  leaveGroup, deleteDirectChat,
   getUserById, updateUser, searchUsers, getChatMessages, saveMessage,
   toggleReaction, deleteMessages, sanitizeUser,
 };

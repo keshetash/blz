@@ -5,6 +5,7 @@ import { authLogin, authLoginPassword, authRegister, authSetPassword } from './a
 import {
   createDirectChat, createGroupChat, getChats, getChatMessages,
   sendChatMessage, markChatRead, deleteMessages as apiDeleteMessages,
+  leaveGroup as apiLeaveGroup, deleteDirectChat as apiDeleteDirectChat,
 } from './api/chats';
 import { searchUsers, updateMe, getUserById } from './api/users';
 import { connectSocket, disconnectSocket, getSocket, joinChat, setActiveChat } from './socket/socketClient';
@@ -83,13 +84,22 @@ function MsgStatus({ isRead }: { isRead: boolean }) {
 }
 
 // ── Avatar component ──────────────────────────────────────────────────────────
+function resolveUrl(url?: string | null): string | null {
+  if (!url) return null;
+  // Relative paths from local disk storage → prefix with backend URL
+  if (url.startsWith('/uploads/')) return `${API_BASE_URL}${url}`;
+  return url;
+}
+
 function Avatar({ user, size = 36, radius = 11 }: { user?: User | null; size?: number; radius?: number }) {
-  if (user?.avatar_url) {
+  const src = resolveUrl(user?.avatar_url);
+  if (src) {
     return (
       <img
-        src={user.avatar_url}
-        alt={user.display_name || user.username || ''}
+        src={src}
+        alt={user?.display_name || user?.username || ''}
         style={{ width: size, height: size, borderRadius: radius, objectFit: 'cover', flexShrink: 0, display: 'block' }}
+        onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }}
       />
     );
   }
@@ -250,7 +260,7 @@ function GroupInfoModal({ chat, onClose, onViewUser, meId }: {
 function ProfileSettingsModal({ me, token, onClose, onUpdate }: {
   me: User; token: string; onClose: () => void; onUpdate: (u: User) => void;
 }) {
-  const [tab, setTab] = useState<'profile' | 'password'>('profile');
+  const [tab, setTab] = useState<'profile' | 'password' | 'privacy'>('profile');
 
   const [displayName, setDisplayName] = useState(me.display_name ?? '');
   const [username, setUsername] = useState(me.username ?? '');
@@ -258,7 +268,7 @@ function ProfileSettingsModal({ me, token, onClose, onUpdate }: {
   const [birthDate, setBirthDate] = useState(me.birth_date ?? '');
   const [hideBio, setHideBio] = useState(me.hide_bio ?? false);
   const [hideBirth, setHideBirth] = useState(me.hide_birth_date ?? false);
-  const [avatarPreview, setAvatarPreview] = useState<string | null>(me.avatar_url ?? null);
+  const [avatarPreview, setAvatarPreview] = useState<string | null>(resolveUrl(me.avatar_url) ?? null);
   const [avatarFile, setAvatarFile] = useState<File | null>(null);
   const [profileBusy, setProfileBusy] = useState(false);
   const [profileError, setProfileError] = useState<string | null>(null);
@@ -271,6 +281,10 @@ function ProfileSettingsModal({ me, token, onClose, onUpdate }: {
   const [pwBusy, setPwBusy] = useState(false);
   const [pwError, setPwError] = useState<string | null>(null);
   const [pwOk, setPwOk] = useState(false);
+
+  const [noGroupAdd, setNoGroupAdd] = useState(me.no_group_add ?? false);
+  const [privacyBusy, setPrivacyBusy] = useState(false);
+  const [privacyOk, setPrivacyOk] = useState(false);
 
   function handleAvatarPick(e: React.ChangeEvent<HTMLInputElement>) {
     const f = e.target.files?.[0]; if (!f) return;
@@ -322,6 +336,17 @@ function ProfileSettingsModal({ me, token, onClose, onUpdate }: {
     finally { setPwBusy(false); }
   }
 
+  async function onSavePrivacy() {
+    setPrivacyBusy(true); setPrivacyOk(false);
+    try {
+      const next = await updateMe({ no_group_add: noGroupAdd });
+      onUpdate(next);
+      setPrivacyOk(true);
+      setTimeout(() => setPrivacyOk(false), 2500);
+    } catch (e: any) { /* ignore */ }
+    finally { setPrivacyBusy(false); }
+  }
+
   return (
     <div className="modalOverlay" onClick={e => e.target === e.currentTarget && onClose()}>
       <div className="psCard">
@@ -336,6 +361,7 @@ function ProfileSettingsModal({ me, token, onClose, onUpdate }: {
         <div className="psTabs">
           <button className={`psTab${tab === 'profile' ? ' active' : ''}`} onClick={() => setTab('profile')}>Профиль</button>
           <button className={`psTab${tab === 'password' ? ' active' : ''}`} onClick={() => setTab('password')}>Пароль</button>
+          <button className={`psTab${tab === 'privacy' ? ' active' : ''}`} onClick={() => setTab('privacy')}>Конфиденциальность</button>
         </div>
 
         {tab === 'profile' && (
@@ -356,7 +382,6 @@ function ProfileSettingsModal({ me, token, onClose, onUpdate }: {
               <div className="psAvatarHint">Нажмите чтобы изменить фото</div>
               <input ref={fileRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handleAvatarPick} />
             </div>
-
             <div className="psField">
               <label className="psLabel">Имя</label>
               <input className="psInput" value={displayName} onChange={e => setDisplayName(e.target.value)} placeholder="Как вас зовут" maxLength={64} />
@@ -386,7 +411,6 @@ function ProfileSettingsModal({ me, token, onClose, onUpdate }: {
                 Скрыть от других пользователей
               </label>
             </div>
-
             {profileError && <div className="psError">{profileError}</div>}
             {profileOk && <div className="psOk">✓ Профиль сохранён</div>}
             <button className="psSaveBtn" onClick={onSaveProfile} disabled={profileBusy}>
@@ -421,6 +445,28 @@ function ProfileSettingsModal({ me, token, onClose, onUpdate }: {
             {pwOk && <div className="psOk">✓ Пароль успешно обновлён</div>}
             <button className="psSaveBtn" onClick={onSavePassword} disabled={pwBusy}>
               {pwBusy ? '…' : me.has_password ? 'Сменить пароль' : 'Установить пароль'}
+            </button>
+          </div>
+        )}
+
+        {tab === 'privacy' && (
+          <div className="psBody">
+            <div className="psPrivacySection">
+              <div className="psPrivacyTitle">Группы</div>
+              <div className="psPrivacyDesc">Управляйте тем, кто может добавлять вас в групповые чаты.</div>
+              <label className="psPrivacyRow">
+                <div className="psPrivacyRowText">
+                  <div className="psPrivacyRowLabel">Запретить добавление в группы</div>
+                  <div className="psPrivacyRowSub">Никто не сможет добавить вас в групповой чат без вашего согласия</div>
+                </div>
+                <div className={`psToggle${noGroupAdd ? ' on' : ''}`} onClick={() => setNoGroupAdd(v => !v)}>
+                  <div className="psToggleKnob" />
+                </div>
+              </label>
+            </div>
+            {privacyOk && <div className="psOk">✓ Настройки сохранены</div>}
+            <button className="psSaveBtn" onClick={onSavePrivacy} disabled={privacyBusy}>
+              {privacyBusy ? '…' : 'Сохранить'}
             </button>
           </div>
         )}
@@ -554,6 +600,55 @@ function CreateGroupModal({ onClose, onCreate, contacts, meId }: {
   );
 }
 
+// ── ChatContextMenu ───────────────────────────────────────────────────────────
+function ChatContextMenu({ x, y, chat, meId, onClose, onDelete, onLeave }: {
+  x: number; y: number; chat: Chat; meId: string;
+  onClose: () => void;
+  onDelete: () => void;
+  onLeave: () => void;
+}) {
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    function handleClick(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) onClose();
+    }
+    document.addEventListener('mousedown', handleClick);
+    return () => document.removeEventListener('mousedown', handleClick);
+  }, [onClose]);
+
+  // Clamp to viewport
+  const style: React.CSSProperties = {
+    position: 'fixed',
+    top: Math.min(y, window.innerHeight - 100),
+    left: Math.min(x, window.innerWidth - 180),
+    zIndex: 9999,
+  };
+
+  return (
+    <div ref={ref} className="ctxMenu" style={style}>
+      {chat.type === 'direct' ? (
+        <button className="ctxItem ctxItemDanger" onClick={() => { onClose(); onDelete(); }}>
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <polyline points="3 6 5 6 21 6"/>
+            <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>
+            <path d="M10 11v6M14 11v6"/>
+          </svg>
+          Удалить чат
+        </button>
+      ) : (
+        <button className="ctxItem ctxItemDanger" onClick={() => { onClose(); onLeave(); }}>
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+            <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
+            <polyline points="16 17 21 12 16 7"/>
+            <line x1="21" y1="12" x2="9" y2="12"/>
+          </svg>
+          Покинуть группу
+        </button>
+      )}
+    </div>
+  );
+}
+
 // ── DeleteConfirmModal ────────────────────────────────────────────────────────
 function DeleteConfirmModal({ count, onConfirm, onCancel, busy }: {
   count: number; onConfirm: () => void; onCancel: () => void; busy: boolean;
@@ -585,6 +680,48 @@ function DeleteConfirmModal({ count, onConfirm, onCancel, busy }: {
   );
 }
 
+// ── ChatActionConfirmModal ─────────────────────────────────────────────────────
+function ChatActionConfirmModal({ chat, onConfirm, onCancel, busy }: {
+  chat: Chat; onConfirm: () => void; onCancel: () => void; busy: boolean;
+}) {
+  const isGroup = chat.type === 'group';
+  return (
+    <div className="modalOverlay" onClick={e => e.target === e.currentTarget && onCancel()}>
+      <div className="confirmCard">
+        <div className="confirmIcon">
+          {isGroup ? (
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
+              <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
+              <polyline points="16 17 21 12 16 7"/>
+              <line x1="21" y1="12" x2="9" y2="12"/>
+            </svg>
+          ) : (
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="3 6 5 6 21 6"/>
+              <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>
+              <path d="M10 11v6M14 11v6"/>
+            </svg>
+          )}
+        </div>
+        <div className="confirmTitle">
+          {isGroup ? 'Покинуть группу?' : 'Удалить чат?'}
+        </div>
+        <div className="confirmText">
+          {isGroup
+            ? `Вы покинете «${chat.name || 'Группу'}». Остальные участники увидят уведомление.`
+            : 'Чат будет удалён для обоих участников. Действие нельзя отменить.'}
+        </div>
+        <div className="confirmBtns">
+          <button className="confirmCancel" onClick={onCancel} disabled={busy}>Отмена</button>
+          <button className="confirmDelete" onClick={onConfirm} disabled={busy}>
+            {busy ? '…' : isGroup ? 'Покинуть' : 'Удалить'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ════════════════════════════════════════════════════════════════════════════
 export default function App() {
   const saved = useMemo(() => getSession(), []);
@@ -608,6 +745,9 @@ export default function App() {
   const [showProfileSettings, setShowProfileSettings] = useState(false);
   const [viewUserId, setViewUserId] = useState<string | null>(null);
   const [showGroupInfo, setShowGroupInfo] = useState(false);
+  const [chatCtxMenu, setChatCtxMenu] = useState<{ x: number; y: number; chat: Chat } | null>(null);
+  const [chatActionConfirm, setChatActionConfirm] = useState<Chat | null>(null);
+  const [chatActionBusy, setChatActionBusy] = useState(false);
 
   type ChatFilter = 'all' | 'groups' | 'direct';
   const [chatFilter, setChatFilter] = useState<ChatFilter>('all');
@@ -826,6 +966,23 @@ export default function App() {
     setActiveChatId(chat.id); setChatFilter('all');
   }
 
+  async function onConfirmChatAction() {
+    if (!chatActionConfirm) return;
+    setChatActionBusy(true);
+    try {
+      if (chatActionConfirm.type === 'group') {
+        await apiLeaveGroup(chatActionConfirm.id);
+      } else {
+        await apiDeleteDirectChat(chatActionConfirm.id);
+      }
+      // Socket will fire 'chat-removed' — but also handle locally just in case
+      setChats(prev => prev.filter(c => c.id !== chatActionConfirm.id));
+      if (activeChatId === chatActionConfirm.id) { setActiveChatId(null); setMessages([]); }
+      setChatActionConfirm(null);
+    } catch (e: any) { setDataError(e?.message ?? 'Ошибка'); }
+    finally { setChatActionBusy(false); }
+  }
+
   function onLogout() {
     clearSession(); setToken(null); setMe(null); setChats([]); setMessages([]);
     setActiveChatId(null); setUserResults([]); setUserSearch(''); setShowProfile(false);
@@ -904,6 +1061,22 @@ export default function App() {
           meId={me.id}
         />
       )}
+      {chatCtxMenu && (
+        <ChatContextMenu
+          x={chatCtxMenu.x} y={chatCtxMenu.y} chat={chatCtxMenu.chat} meId={me.id}
+          onClose={() => setChatCtxMenu(null)}
+          onDelete={() => setChatActionConfirm(chatCtxMenu.chat)}
+          onLeave={() => setChatActionConfirm(chatCtxMenu.chat)}
+        />
+      )}
+      {chatActionConfirm && (
+        <ChatActionConfirmModal
+          chat={chatActionConfirm}
+          onConfirm={onConfirmChatAction}
+          onCancel={() => setChatActionConfirm(null)}
+          busy={chatActionBusy}
+        />
+      )}
 
       <div className={`layout${hasSelection ? ' selecting' : ''}`}>
         <aside className="sidebar">
@@ -960,7 +1133,11 @@ export default function App() {
             {filteredChats.map(c => {
               const title = chatTitle(c, me.id);
               return (
-                <button key={c.id} className={`chatItem${c.id === activeChatId ? ' active' : ''}`} onClick={() => setActiveChatId(c.id)}>
+                <button key={c.id}
+                  className={`chatItem${c.id === activeChatId ? ' active' : ''}`}
+                  onClick={() => setActiveChatId(c.id)}
+                  onContextMenu={e => { e.preventDefault(); setChatCtxMenu({ x: e.clientX, y: e.clientY, chat: c }); }}
+                >
                   <div className={`ciAvatar${c.type === 'group' ? ' group' : ''}`}>{avatarLetter(title)}</div>
                   <div className="ciBody">
                     <div className="ciTop">
@@ -1075,8 +1252,17 @@ export default function App() {
                 const sender = !isOwn ? activeChat.members.find(mb => mb.id === m.sender_id) : undefined;
                 const nextMsg = messages[idx + 1];
                 const isLastInRow = !nextMsg || nextMsg.sender_id !== m.sender_id;
-                const showAvatar = isGroup && !isOwn && isLastInRow;
-                const showName = isGroup && !isOwn && (idx === 0 || messages[idx - 1].sender_id !== m.sender_id);
+                const showAvatar = isGroup && !isOwn && isLastInRow && !m.is_system;
+                const showName = isGroup && !isOwn && !m.is_system && (idx === 0 || messages[idx - 1].sender_id !== m.sender_id || messages[idx - 1].is_system);
+
+                // System messages (leave/join notifications)
+                if (m.is_system) {
+                  return (
+                    <div key={m.id} className="msgSystem">
+                      <span>{m.text}</span>
+                    </div>
+                  );
+                }
 
                 return (
                   <div

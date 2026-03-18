@@ -9,6 +9,8 @@ const {
   addChatMember,
   removeChatMember,
   updateChatMetadata,
+  leaveGroup,
+  deleteDirectChat,
 } = require('../services/chatService');
 
 const router = express.Router();
@@ -150,13 +152,45 @@ router.delete('/:id/members/:userId', (req, res, next) => {
   }
 });
 
+// POST /chats/:id/leave — leave a group (sends system message to remaining members)
+router.post('/:id/leave', (req, res, next) => {
+  try {
+    const { sysMsg, remaining } = leaveGroup(req.params.id, req.userId);
+    const io = req.app.get('io');
+    if (io) {
+      // Notify the leaver: remove chat from their list
+      io.to(`user:${req.userId}`).emit('chat-removed', { chatId: req.params.id });
+      // Notify remaining: system message + chat update
+      if (sysMsg) {
+        for (const uid of remaining) {
+          io.to(`user:${uid}`).emit('new-message', sysMsg);
+        }
+      }
+    }
+    res.json({ ok: true });
+  } catch (err) { next(err); }
+});
+
+// DELETE /chats/:id — delete direct chat (removes for both users)
+router.delete('/:id', (req, res, next) => {
+  try {
+    const memberIds = deleteDirectChat(req.params.id, req.userId);
+    const io = req.app.get('io');
+    if (io) {
+      for (const uid of memberIds) {
+        io.to(`user:${uid}`).emit('chat-removed', { chatId: req.params.id });
+      }
+    }
+    res.json({ ok: true });
+  } catch (err) { next(err); }
+});
+
 // PATCH /chats/:id — update chat metadata (name, avatar)
 router.patch('/:id', (req, res, next) => {
   try {
     const { name, avatar_url } = req.body;
     const updatedChat = updateChatMetadata(req.params.id, req.userId, { name, avatar_url });
 
-    // Notify all members that the chat was updated
     const io = req.app.get('io');
     if (io) {
       for (const member of updatedChat.members) {
@@ -165,9 +199,7 @@ router.patch('/:id', (req, res, next) => {
     }
 
     res.json(updatedChat);
-  } catch (err) {
-    next(err);
-  }
+  } catch (err) { next(err); }
 });
 
 module.exports = router;

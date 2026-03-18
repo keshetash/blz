@@ -20,8 +20,8 @@ router.get('/me', (req, res) => {
 // PATCH /users/me
 router.patch('/me', (req, res, next) => {
   try {
-    const { username, display_name, avatar_url, bio, birth_date, hide_bio, hide_birth_date } = req.body;
-    const updated = updateUser(req.userId, { username, display_name, avatar_url, bio, birth_date, hide_bio, hide_birth_date });
+    const { username, display_name, avatar_url, bio, birth_date, hide_bio, hide_birth_date, no_group_add } = req.body;
+    const updated = updateUser(req.userId, { username, display_name, avatar_url, bio, birth_date, hide_bio, hide_birth_date, no_group_add });
     res.json(sanitizeUser(updated, { showPrivate: true }));
   } catch (err) {
     if (err.message && err.message.includes('UNIQUE')) {

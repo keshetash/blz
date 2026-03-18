@@ -45,3 +45,11 @@ export async function deleteMessages(chatId: string, messageIds: string[]): Prom
   });
   return res.data.deleted;
 }
+
+export async function leaveGroup(chatId: string): Promise<void> {
+  await client.post(`/chats/${chatId}/leave`);
+}
+
+export async function deleteDirectChat(chatId: string): Promise<void> {
+  await client.delete(`/chats/${chatId}`);
+}

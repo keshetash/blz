@@ -153,9 +153,15 @@ function runMigrations() {
     'ALTER TABLE users ADD COLUMN birth_date TEXT',
     'ALTER TABLE users ADD COLUMN hide_bio INTEGER NOT NULL DEFAULT 0',
     'ALTER TABLE users ADD COLUMN hide_birth_date INTEGER NOT NULL DEFAULT 0',
+    'ALTER TABLE users ADD COLUMN no_group_add INTEGER NOT NULL DEFAULT 0',
   ]) {
     try { db.exec(col); } catch { /* already exists */ }
   }
+
+  // Add is_system flag to messages (for leave/join notifications)
+  try {
+    db.exec('ALTER TABLE messages ADD COLUMN is_system INTEGER NOT NULL DEFAULT 0');
+  } catch { /* already exists */ }
 
   console.log('[DB] Migrations complete');
 }
