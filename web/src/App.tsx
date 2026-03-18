@@ -9,6 +9,7 @@ import {
 import { searchUsers, updateMe, getUserById } from './api/users';
 import { connectSocket, disconnectSocket, getSocket, joinChat, setActiveChat } from './socket/socketClient';
 import { getSession, setSession, clearSession } from './storage/session';
+import { API_BASE_URL } from './config';
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 function formatTime(ts: number) {
@@ -281,7 +282,7 @@ function ProfileSettingsModal({ me, token, onClose, onUpdate }: {
 
   async function uploadAvatar(file: File): Promise<string> {
     const fd = new FormData(); fd.append('file', file);
-    const res = await fetch('/upload', { method: 'POST', headers: { Authorization: `Bearer ${token}` }, body: fd });
+    const res = await fetch(`${API_BASE_URL}/upload`, { method: 'POST', headers: { Authorization: `Bearer ${token}` }, body: fd });
     if (!res.ok) throw new Error('Ошибка загрузки аватара');
     return (await res.json()).url as string;
   }
