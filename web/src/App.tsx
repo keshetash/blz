@@ -601,8 +601,8 @@ function CreateGroupModal({ onClose, onCreate, contacts, meId }: {
 }
 
 // ── ChatContextMenu ───────────────────────────────────────────────────────────
-function ChatContextMenu({ x, y, chat, meId, onClose, onDelete, onLeave }: {
-  x: number; y: number; chat: Chat; meId: string;
+function ChatContextMenu({ x, y, chat, onClose, onDelete, onLeave }: {
+  x: number; y: number; chat: Chat;
   onClose: () => void;
   onDelete: () => void;
   onLeave: () => void;
@@ -1063,7 +1063,7 @@ export default function App() {
       )}
       {chatCtxMenu && (
         <ChatContextMenu
-          x={chatCtxMenu.x} y={chatCtxMenu.y} chat={chatCtxMenu.chat} meId={me.id}
+          x={chatCtxMenu.x} y={chatCtxMenu.y} chat={chatCtxMenu.chat}
           onClose={() => setChatCtxMenu(null)}
           onDelete={() => setChatActionConfirm(chatCtxMenu.chat)}
           onLeave={() => setChatActionConfirm(chatCtxMenu.chat)}
