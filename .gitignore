@@ -1,0 +1,13 @@
+# Claude Code local settings
+.claude/
+
+node_modules/
+.env
+*.db
+*.db-shm
+*.db-wal
+backend/data/
+.DS_Store
+Thumbs.db
+*.log
+backend/uploads/

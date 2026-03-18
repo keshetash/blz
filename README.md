@@ -1,0 +1,272 @@
+## Blizkie (Web-only) + Backend
+
+Репозиторий оставлен **только для веб-версии** мессенджера:
+
+- `backend/` — API + Socket.IO (Express)
+- `web/` — браузерный клиент (React + Vite + TypeScript)
+
+## Требования
+
+- Node.js 20+
+- npm
+
+## Быстрый старт (локально)
+
+### 1) Backend
+
+```powershell
+cd backend
+npm install
+npm run dev
+```
+
+По умолчанию бэкенд слушает порт из `backend/.env` (в текущей конфигурации это `http://localhost:3001`).
+
+> Если `DEV_MODE=true`, OTP-коды выводятся в консоль бэкенда (без реальной отправки SMS/email).
+
+### 2) Web
+
+```powershell
+cd web
+npm install
+npm run dev
+```
+
+Откройте адрес, который покажет Vite (обычно `http://localhost:5173`).
+
+URL бэкенда для веб-клиента задаётся в `web/.env`:
+
+- `VITE_API_BASE_URL` (HTTP API)
+- `VITE_SOCKET_URL` (Socket.IO)
+
+## Smoke-тест (ручной)
+
+- Откройте `web` в браузере
+- Введите email/телефон → нажмите “Получить код”
+- Возьмите OTP из консоли бэкенда → “Войти”
+- Убедитесь, что загружаются чаты и отправляется сообщение (POST `/chats/:id/messages`)
+
+## API (основное)
+
+| Метод | URL | Описание |
+|---|---|---|
+| POST | `/auth/send-code` | Отправить OTP-код |
+| POST | `/auth/verify` | Проверить код, получить JWT |
+| GET | `/users/me` | Текущий пользователь |
+| PATCH | `/users/me` | Обновить профиль |
+| GET | `/users/search?q=` | Поиск пользователей |
+| GET | `/chats` | Список чатов |
+| POST | `/chats` | Создать / получить диалог |
+| GET | `/chats/:id/messages` | Сообщения чата |
+| POST | `/chats/:id/messages` | Отправить сообщение |
+| POST | `/upload` | Загрузить файл (возвращает URL) |
+
+## Blizkie (Web + Backend)
+
+В репозитории два проекта:
+
+- `backend/` — API + Socket.IO (Express)
+- `mobile/` — клиент на Expo (React Native) с поддержкой **Web** (Expo Web)
+
+### Требования
+
+- Node.js 20+ (у вас Node 24 тоже подходит)
+- npm
+
+### Запуск backend (локально)
+
+```powershell
+cd backend
+copy .env.example .env
+npm install
+npm run dev
+```
+
+Backend по умолчанию стартует на `http://localhost:3000`.
+
+### Запуск Web-клиента (Expo Web)
+
+```powershell
+cd mobile
+copy .env.example .env
+npm install
+npx expo start --web
+```
+
+Откройте адрес, который покажет Expo (обычно `http://localhost:8081`).
+
+### Быстрый smoke-тест
+
+- Регистрация/логин (проверка получения токена)
+- Список чатов грузится
+- Открытие чата, отправка текстового сообщения
+- Отправка изображения/видео (в браузере видео проигрывается через `expo-av`)
+- Логаут (токен удаляется)
+
+# Blizkie — Мессенджер
+
+Telegram-подобный мессенджер с шифрованием сообщений, авторизацией по телефону/email и realtime чатами.
+
+## Стек
+
+| Слой | Технологии |
+|---|---|
+| Бэкенд | Node.js, Express, Socket.io, SQLite (better-sqlite3), Nodemailer, Expo Push (expo-server-sdk), Multer, AWS SDK (Cloudflare R2) |
+| Шифрование | AES-256-GCM (встроенный `crypto` Node.js) |
+| Авторизация | OTP-коды (email/SMS-заглушка) + JWT |
+| Файлы | Cloudflare R2 (S3 API) или локальное хранилище |
+| Мобильное приложение | React Native + Expo (iOS + Android) |
+| Состояние | Zustand |
+| HTTP-клиент | Axios |
+| Уведомления | Expo Notifications |
+
+## Быстрый старт
+
+### 1. Запуск бэкенда
+
+```bash
+cd backend
+npm install
+# Скопируйте .env.example в .env и заполните переменные
+cp .env.example .env
+npm run dev
+```
+
+Бэкенд запустится на `http://localhost:3000`.
+
+> **DEV_MODE=true** — коды верификации выводятся в консоль вместо отправки SMS/email. Это удобно для разработки.
+
+### 2. Запуск мобильного приложения
+
+```bash
+cd mobile
+npm install
+```
+
+Откройте `src/constants/config.ts` и укажите IP вашего компьютера:
+
+```ts
+export const API_BASE_URL = 'http://192.168.X.X:3000'; // ваш локальный IP
+export const SOCKET_URL = 'http://192.168.X.X:3000';
+```
+
+> Для работы push-уведомлений нужно, чтобы проект Expo был инициализирован (`npx eas init`) и имел `projectId` в `eas.json`/`app.json`.
+
+> Используйте `ipconfig` (Windows) или `ifconfig` (Mac/Linux) чтобы узнать IP.
+
+```bash
+npx expo start
+```
+
+- Отсканируйте QR-код через **Expo Go** на iOS или Android
+- Нажмите `i` для iOS симулятора или `a` для Android эмулятора
+
+## Архитектура
+
+```
+Blizkie/
+├── backend/
+│   ├── src/
+│   │   ├── index.js              # Точка входа, HTTP + Socket.io
+│   │   ├── config/database.js    # SQLite подключение
+│   │   ├── db/migrations.js      # Схема БД
+│   │   ├── crypto/aes.js         # AES-256-GCM шифрование
+│   │   ├── middleware/auth.js    # JWT проверка
+│   │   ├── routes/               # REST API endpoints
+│   │   ├── services/             # Бизнес-логика
+│   │   └── socket/               # WebSocket обработчики
+│   └── data/blizkie.db           # База данных (создаётся автоматически)
+│
+└── mobile/
+    └── src/
+        ├── navigation/           # React Navigation стеки
+        ├── screens/              # Экраны приложения
+        ├── components/           # Переиспользуемые компоненты
+        ├── api/                  # HTTP-клиенты
+        ├── socket/               # WebSocket клиент
+        ├── store/                # Zustand состояние
+        └── utils/                # Утилиты
+```
+
+## API Endpoints
+
+| Метод | URL | Описание |
+|---|---|---|
+| POST | `/auth/send-code` | Отправить OTP-код |
+| POST | `/auth/verify` | Проверить код, получить JWT |
+| GET | `/users/me` | Текущий пользователь |
+| PATCH | `/users/me` | Обновить профиль |
+| GET | `/users/search?q=` | Поиск пользователей |
+| GET | `/chats` | Список чатов |
+| POST | `/chats` | Создать / получить диалог |
+| GET | `/chats/:id/messages` | Сообщения чата |
+| POST | `/chats/:id/messages` | Отправить сообщение |
+| POST | `/upload` | Загрузить файл (возвращает URL) |
+| PUT | `/users/push-token` | Зарегистрировать Expo push-токен |
+| DELETE | `/users/push-token` | Удалить push-токен |
+
+## Шифрование сообщений
+
+Каждое сообщение шифруется перед записью в БД:
+
+1. Генерируется случайный 12-байтный IV (nonce)
+2. Текст шифруется **AES-256-GCM** с ключом из `MESSAGE_ENCRYPTION_KEY`
+3. В БД хранятся: `ciphertext`, `iv`, `auth_tag` (в base64)
+4. При чтении — расшифровка на лету перед отдачей клиенту
+
+Скомпрометированная БД без ключа не даёт доступа к сообщениям.
+
+## Генерация безопасных ключей
+
+```bash
+# JWT secret
+node -e "console.log(require('crypto').randomBytes(64).toString('hex'))"
+
+# Ключ шифрования сообщений (32 байта = 64 hex символа)
+node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+```
+
+## Внешние сервисы и интеграции
+
+- **Email (OTP)**: используется `nodemailer` с SMTP. В режиме `DEV_MODE=true` коды выводятся в консоль вместо отправки.
+- **SMS (OTP)**: текущая реализация — заглушка. В режиме `DEV_MODE=true` коды выводятся в консоль, для продакшена добавьте интеграцию (например, Twilio).
+- **Push-уведомления**: мобильное приложение получает `Expo Push Token` (`expo-notifications`) и сохраняет на сервере через `/users/push-token`. Бэкенд отправляет уведомления через `expo-server-sdk`.
+- **Файловое хранилище**: `/upload` сохраняет файлы в Cloudflare R2 (S3 API, AWS SDK) при наличии `R2_*` переменных, иначе использует локальный каталог `uploads/`.
+
+## Socket.io события
+
+| Событие | Направление | Описание |
+|---|---|---|
+| `join-chat` | client → server | Войти в комнату чата |
+| `new-message` | server → client | Новое сообщение |
+| `typing-start` | client → server | Пользователь печатает |
+| `typing-stop` | client → server | Перестал печатать |
+| `user-typing` | server → client | Кто-то печатает |
+| `user-stopped-typing` | server → client | Перестал печатать |
+
+## Сборка для iOS (Production)
+
+```bash
+cd mobile
+npx expo install expo-build-properties
+npx eas build --platform ios
+```
+
+Требуется Apple Developer Account и настроенный EAS CLI.
+
+## Переменные окружения бэкенда
+
+| Переменная | Описание |
+|---|---|
+| `PORT` | Порт сервера (по умолчанию 3000) |
+| `JWT_SECRET` | Секрет для подписи JWT |
+| `MESSAGE_ENCRYPTION_KEY` | 64-char hex ключ для AES-256-GCM |
+| `SMTP_HOST` / `SMTP_PORT` | SMTP сервер для email |
+| `SMTP_USER` / `SMTP_PASS` | Credentials SMTP |
+| `DEV_MODE` | `true` = коды в консоль (без реальной отправки) |
+| `R2_ACCOUNT_ID` | Cloudflare R2 аккаунт (S3 API) |
+| `R2_ACCESS_KEY_ID` | Cloudflare R2 ключ доступа |
+| `R2_SECRET_ACCESS_KEY` | Cloudflare R2 секретный ключ |
+| `R2_BUCKET` | Cloudflare R2 bucket |
+| `R2_PUBLIC_URL` | Публичный URL для файлов R2 (например, https://<bucket>.r2.cloudflarestorage.com) |
+| `EMAIL_FROM` | Адрес отправителя для email OTP (по умолчанию `Blizkie <no-reply@blizkie.app>`) |
