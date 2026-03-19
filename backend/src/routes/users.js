@@ -5,6 +5,7 @@ const {
   updateUser,
   searchUsers,
   sanitizeUser,
+  deleteAccount,
 } = require('../services/chatService');
 
 const router = express.Router();
@@ -27,6 +28,35 @@ router.patch('/me', (req, res, next) => {
     if (err.message && err.message.includes('UNIQUE')) {
       return res.status(409).json({ error: 'Username already taken' });
     }
+    next(err);
+  }
+});
+
+// DELETE /users/me — permanently delete account
+router.delete('/me', (req, res, next) => {
+  try {
+    const { groupNotifications, deletedDirectChatIds, directChatMembersMap } = deleteAccount(req.userId);
+    const io = req.app.get('io');
+    if (io) {
+      // Notify remaining group members: system message
+      for (const { chatId, sysMsg, remainingUserIds } of groupNotifications) {
+        for (const uid of remainingUserIds) {
+          io.to(`user:${uid}`).emit('new-message', sysMsg);
+        }
+      }
+      // Notify direct chat partners: remove the chat from their list
+      for (const chatId of deletedDirectChatIds) {
+        for (const uid of directChatMembersMap[chatId] || []) {
+          if (uid !== req.userId) {
+            io.to(`user:${uid}`).emit('chat-removed', { chatId });
+          }
+        }
+      }
+      // Force-disconnect the deleted user's socket session
+      io.to(`user:${req.userId}`).emit('account-deleted');
+    }
+    res.json({ ok: true });
+  } catch (err) {
     next(err);
   }
 });

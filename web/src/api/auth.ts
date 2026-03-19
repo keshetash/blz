@@ -26,3 +26,8 @@ export async function authSetPassword(
 ): Promise<void> {
   await client.patch('/auth/password', { newPassword, currentPassword });
 }
+
+/** Permanently delete the current user's account */
+export async function deleteAccount(): Promise<void> {
+  await client.delete('/users/me');
+}

@@ -433,10 +433,81 @@ function deleteMessages(chatId, senderId, messageIds) {
   return deleted;
 }
 
+/**
+ * Fully deletes a user account:
+ * - Sends "X покинул(а) чат" system message in every group they're in
+ * - Deletes all direct chats they're part of
+ * - Removes them from all groups
+ * - Deletes the user row (cascades sessions, chat_members, friend rows)
+ *
+ * Returns { groupNotifications, deletedDirectChatMemberIds } for socket broadcasting.
+ */
+function deleteAccount(userId) {
+  const db = getDb();
+
+  const user = db.prepare('SELECT display_name, username FROM users WHERE id = ?').get(userId);
+  if (!user) throw Object.assign(new Error('User not found'), { status: 404 });
+  const userName = user.display_name || user.username || 'Пользователь';
+
+  // Collect all group chats this user is in
+  const groupChats = db.prepare(
+    `SELECT c.id FROM chats c
+     JOIN chat_members cm ON cm.chat_id = c.id
+     WHERE cm.user_id = ? AND c.type = 'group'`
+  ).all(userId);
+
+  // Collect all direct chats this user is in
+  const directChats = db.prepare(
+    `SELECT c.id FROM chats c
+     JOIN chat_members cm ON cm.chat_id = c.id
+     WHERE cm.user_id = ? AND c.type = 'direct'`
+  ).all(userId);
+
+  const groupNotifications = []; // [{ chatId, sysMsg, remainingUserIds }]
+  const deletedDirectChatIds = []; // chatIds deleted
+  const directChatMembersMap = {}; // chatId → [userId, ...]
+
+  db.exec('BEGIN');
+  try {
+    // 1. For each group: send system message, then remove user
+    for (const { id: chatId } of groupChats) {
+      const remaining = db.prepare(
+        'SELECT user_id FROM chat_members WHERE chat_id = ? AND user_id != ?'
+      ).all(chatId, userId).map(r => r.user_id);
+
+      if (remaining.length > 0) {
+        const systemText = `${userName} покинул(а) чат`;
+        const sysMsg = saveMessage(chatId, userId, systemText, {}, true);
+        groupNotifications.push({ chatId, sysMsg, remainingUserIds: remaining });
+      }
+
+      db.prepare('DELETE FROM chat_members WHERE chat_id = ? AND user_id = ?').run(chatId, userId);
+    }
+
+    // 2. For each direct chat: collect members, then delete the whole chat
+    for (const { id: chatId } of directChats) {
+      const members = db.prepare('SELECT user_id FROM chat_members WHERE chat_id = ?').all(chatId).map(r => r.user_id);
+      directChatMembersMap[chatId] = members;
+      deletedDirectChatIds.push(chatId);
+      db.prepare('DELETE FROM chats WHERE id = ?').run(chatId);
+    }
+
+    // 3. Delete the user (CASCADE handles sessions, remaining chat_members, friend_requests, friends)
+    db.prepare('DELETE FROM users WHERE id = ?').run(userId);
+
+    db.exec('COMMIT');
+  } catch (e) {
+    db.exec('ROLLBACK');
+    throw e;
+  }
+
+  return { groupNotifications, deletedDirectChatIds, directChatMembersMap };
+}
+
 module.exports = {
   getUserChats, createGroupChat, getOrCreateDirectChat, getChatById,
   markChatAsRead, addChatMember, removeChatMember, updateChatMetadata,
-  leaveGroup, deleteDirectChat,
+  leaveGroup, deleteDirectChat, deleteAccount,
   getUserById, updateUser, searchUsers, getChatMessages, saveMessage,
   toggleReaction, deleteMessages, sanitizeUser,
 };

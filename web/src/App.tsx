@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import './app.css';
 import { type Chat, type Message, type User } from './types';
-import { authLogin, authLoginPassword, authRegister, authSetPassword } from './api/auth';
+import { authLogin, authLoginPassword, authRegister, authSetPassword, deleteAccount as apiDeleteAccount } from './api/auth';
 import {
   createDirectChat, createGroupChat, getChats, getChatMessages,
   sendChatMessage, markChatRead, deleteMessages as apiDeleteMessages,
@@ -580,8 +580,9 @@ function AddGroupMembersModal({ chat, meId, onClose }: {
 }
 
 // ── ProfileSettingsModal ──────────────────────────────────────────────────────
-function ProfileSettingsModal({ me, token, onClose, onUpdate }: {
+function ProfileSettingsModal({ me, token, onClose, onUpdate, onDeleteAccount }: {
   me: User; token: string; onClose: () => void; onUpdate: (u: User) => void;
+  onDeleteAccount: () => Promise<void>;
 }) {
   const [tab, setTab] = useState<'profile' | 'password' | 'privacy'>('profile');
 
@@ -608,6 +609,9 @@ function ProfileSettingsModal({ me, token, onClose, onUpdate }: {
   const [noGroupAdd, setNoGroupAdd] = useState(me.no_group_add ?? false);
   const [privacyBusy, setPrivacyBusy] = useState(false);
   const [privacyOk, setPrivacyOk] = useState(false);
+
+  const [showDeleteConfirmAccount, setShowDeleteConfirmAccount] = useState(false);
+  const [deletingAccount, setDeletingAccount] = useState(false);
 
   function handleAvatarPick(e: React.ChangeEvent<HTMLInputElement>) {
     const f = e.target.files?.[0]; if (!f) return;
@@ -793,7 +797,59 @@ function ProfileSettingsModal({ me, token, onClose, onUpdate }: {
             </button>
           </div>
         )}
+
+        {/* Delete account — always visible at bottom */}
+        <div className="psDeleteSection">
+          <button className="psDeleteBtn" onClick={() => setShowDeleteConfirmAccount(true)}>
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="3 6 5 6 21 6"/>
+              <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>
+              <path d="M10 11v6M14 11v6"/>
+              <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/>
+            </svg>
+            Удалить аккаунт
+          </button>
+        </div>
       </div>
+
+      {/* Delete account confirmation */}
+      {showDeleteConfirmAccount && (
+        <div className="modalOverlay" style={{ zIndex: 10200 }} onClick={e => e.target === e.currentTarget && !deletingAccount && setShowDeleteConfirmAccount(false)}>
+          <div className="confirmCard">
+            <div className="confirmIcon" style={{ color: 'var(--danger, #f87171)' }}>
+              <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="12" cy="12" r="10"/>
+                <line x1="12" y1="8" x2="12" y2="12"/>
+                <line x1="12" y1="16" x2="12.01" y2="16"/>
+              </svg>
+            </div>
+            <div className="confirmTitle">Удалить аккаунт?</div>
+            <div className="confirmText">
+              Это действие необратимо. Все ваши личные чаты будут удалены, вы покинете все группы, а ваш никнейм освободится. Восстановить аккаунт будет невозможно.
+            </div>
+            <div className="confirmBtns">
+              <button
+                className="psDeleteCancelBtn"
+                onClick={() => setShowDeleteConfirmAccount(false)}
+                disabled={deletingAccount}
+              >
+                Отмена
+              </button>
+              <button
+                className="psDeleteConfirmBtn"
+                disabled={deletingAccount}
+                onClick={async () => {
+                  setDeletingAccount(true);
+                  try { await onDeleteAccount(); }
+                  catch { setDeletingAccount(false); }
+                }}
+              >
+                {deletingAccount ? '…' : 'Удалить навсегда'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -1215,10 +1271,12 @@ export default function App() {
     socket.on('chat-created', onChatCreated);
     socket.on('chat-updated', onChatUpdated);
     socket.on('chat-removed', onChatRemoved);
+    socket.on('account-deleted', onLogout);
     return () => {
       socket.off('new-message', onNewMessage); socket.off('chat-read', onChatRead);
       socket.off('messages-deleted', onMessagesDeleted); socket.off('chat-created', onChatCreated);
       socket.off('chat-updated', onChatUpdated); socket.off('chat-removed', onChatRemoved);
+      socket.off('account-deleted', onLogout);
       disconnectSocket();
     };
   }, [token, me]); // eslint-disable-line
@@ -1329,6 +1387,11 @@ export default function App() {
     setActiveChatId(null); setUserResults([]); setUserSearch(''); setShowProfile(false);
   }
 
+  async function onDeleteAccount() {
+    await apiDeleteAccount();
+    onLogout();
+  }
+
   // ── Auth screen ────────────────────────────────────────────────────────────
   if (!token || !me) {
     const loginReady = authUsername.trim().length >= 3;
@@ -1386,7 +1449,7 @@ export default function App() {
     <>
       {showCreateGroup && <CreateGroupModal onClose={() => setShowCreateGroup(false)} onCreate={onCreateGroup} contacts={contacts} meId={me.id} />}
       {showDeleteConfirm && <DeleteConfirmModal count={selectedIds.size} onConfirm={handleDeleteConfirm} onCancel={() => setShowDeleteConfirm(false)} busy={deleteBusy} />}
-      {showProfileSettings && <ProfileSettingsModal me={me} token={token} onClose={() => setShowProfileSettings(false)} onUpdate={onUpdateMe} />}
+      {showProfileSettings && <ProfileSettingsModal me={me} token={token} onClose={() => setShowProfileSettings(false)} onUpdate={onUpdateMe} onDeleteAccount={onDeleteAccount} />}
       {viewUserId && (
         <UserProfileModal
           userId={viewUserId}
