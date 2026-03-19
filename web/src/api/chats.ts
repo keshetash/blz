@@ -53,3 +53,18 @@ export async function leaveGroup(chatId: string): Promise<void> {
 export async function deleteDirectChat(chatId: string): Promise<void> {
   await client.delete(`/chats/${chatId}`);
 }
+
+export async function addGroupMember(chatId: string, userId: string): Promise<Chat> {
+  const res = await client.post<Chat>(`/chats/${chatId}/members`, { userId });
+  return res.data;
+}
+
+export async function removeGroupMember(chatId: string, userId: string): Promise<Chat> {
+  const res = await client.delete<Chat>(`/chats/${chatId}/members/${userId}`);
+  return res.data;
+}
+
+export async function updateGroupChat(chatId: string, payload: { name?: string; description?: string }): Promise<Chat> {
+  const res = await client.patch<Chat>(`/chats/${chatId}`, payload);
+  return res.data;
+}

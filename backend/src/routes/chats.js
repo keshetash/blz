@@ -136,12 +136,18 @@ router.post('/:id/members', (req, res, next) => {
 // DELETE /chats/:id/members/:userId — remove a member (creator only)
 router.delete('/:id/members/:userId', (req, res, next) => {
   try {
-    const updatedChat = removeChatMember(req.params.id, req.userId, req.params.userId);
+    const { updatedChat, sysMsg, remaining } = removeChatMember(req.params.id, req.userId, req.params.userId);
     const io = req.app.get('io');
     if (io) {
       // Notify remaining members of updated member list
       for (const member of updatedChat.members) {
         io.to(`user:${member.id}`).emit('chat-updated', updatedChat);
+      }
+      // Broadcast system message to remaining members
+      if (sysMsg) {
+        for (const uid of remaining) {
+          io.to(`user:${uid}`).emit('new-message', sysMsg);
+        }
       }
       // Notify the removed user so they can remove the chat from their list
       io.to(`user:${req.params.userId}`).emit('chat-removed', { chatId: req.params.id });
@@ -185,11 +191,11 @@ router.delete('/:id', (req, res, next) => {
   } catch (err) { next(err); }
 });
 
-// PATCH /chats/:id — update chat metadata (name, avatar)
+// PATCH /chats/:id — update chat metadata (name, description, avatar)
 router.patch('/:id', (req, res, next) => {
   try {
-    const { name, avatar_url } = req.body;
-    const updatedChat = updateChatMetadata(req.params.id, req.userId, { name, avatar_url });
+    const { name, description, avatar_url } = req.body;
+    const updatedChat = updateChatMetadata(req.params.id, req.userId, { name, description, avatar_url });
 
     const io = req.app.get('io');
     if (io) {

@@ -112,7 +112,14 @@ function getUserChats(userId) {
  */
 function createGroupChat(name, creatorId, memberIds, description) {
   const db = getDb();
-  const allMembers = [...new Set([creatorId, ...memberIds])];
+
+  // Filter out members who have blocked group adds
+  const validMemberIds = memberIds.filter(id => {
+    const u = db.prepare('SELECT no_group_add FROM users WHERE id = ?').get(id);
+    return !u?.no_group_add;
+  });
+
+  const allMembers = [...new Set([creatorId, ...validMemberIds])];
   if (allMembers.length < 2) {
     throw Object.assign(new Error('Добавьте хотя бы одного участника'), { status: 400 });
   }
@@ -222,6 +229,11 @@ function addChatMember(chatId, requesterId, newUserId) {
   const chat = db.prepare('SELECT creator_id, type FROM chats WHERE id = ?').get(chatId);
   if (!chat || chat.type !== 'group') throw Object.assign(new Error('Chat not found'), { status: 404 });
 
+  // Only the creator can add members
+  if (chat.creator_id !== requesterId) {
+    throw Object.assign(new Error('Only the group creator can add members'), { status: 403 });
+  }
+
   const existing = db.prepare('SELECT 1 FROM chat_members WHERE chat_id = ? AND user_id = ?').get([chatId, newUserId]);
   if (existing) throw Object.assign(new Error('User already in chat'), { status: 409 });
 
@@ -242,8 +254,21 @@ function removeChatMember(chatId, requesterId, targetUserId) {
   if (chat.creator_id !== requesterId && requesterId !== targetUserId) {
     throw Object.assign(new Error('Only creator can remove members'), { status: 403 });
   }
+
+  // Get target user name for system message
+  const targetUser = db.prepare('SELECT display_name, username FROM users WHERE id = ?').get(targetUserId);
+  const targetName = targetUser?.display_name || targetUser?.username || 'Пользователь';
+
   db.prepare('DELETE FROM chat_members WHERE chat_id = ? AND user_id = ?').run([chatId, targetUserId]);
-  return getChatById(chatId, requesterId);
+
+  const updatedChat = getChatById(chatId, requesterId);
+  const remaining = db.prepare('SELECT user_id FROM chat_members WHERE chat_id = ?').all(chatId).map(r => r.user_id);
+
+  // System message for remaining members
+  const systemText = `Администратор удалил(а) ${targetName} из группы`;
+  const sysMsg = saveMessage(chatId, requesterId, systemText, {}, true);
+
+  return { updatedChat, sysMsg, remaining };
 }
 
 function leaveGroup(chatId, userId) {
@@ -289,12 +314,13 @@ function deleteDirectChat(chatId, userId) {
   return members.map(m => m.user_id);
 }
 
-function updateChatMetadata(chatId, requesterId, { name, avatar_url }) {
+function updateChatMetadata(chatId, requesterId, { name, description, avatar_url }) {
   const db = getDb();
   const chat = db.prepare('SELECT creator_id FROM chats WHERE id = ?').get(chatId);
   if (!chat) throw Object.assign(new Error('Chat not found'), { status: 404 });
   if (chat.creator_id !== requesterId) throw Object.assign(new Error('Only creator can update chat'), { status: 403 });
   if (name !== undefined) db.prepare('UPDATE chats SET name = ? WHERE id = ?').run([name, chatId]);
+  if (description !== undefined) db.prepare('UPDATE chats SET description = ? WHERE id = ?').run([description, chatId]);
   if (avatar_url !== undefined) db.prepare('UPDATE chats SET avatar_url = ? WHERE id = ?').run([avatar_url, chatId]);
   return getChatById(chatId, requesterId);
 }
@@ -326,12 +352,12 @@ function searchUsers(q, excludeId) {
   const like = `%${q.toLowerCase()}%`;
   return db
     .prepare(
-      `SELECT id, username, display_name, avatar_url, last_seen_at FROM users
+      `SELECT id, username, display_name, avatar_url, last_seen_at, no_group_add FROM users
        WHERE id != ? AND (LOWER(username) LIKE ? OR LOWER(display_name) LIKE ?)
        LIMIT 20`
     )
     .all([excludeId, like, like])
-    .map(sanitizeUser);
+    .map(u => ({ ...sanitizeUser(u), no_group_add: u.no_group_add ? true : false }));
 }
 
 function getChatMessages(chatId, userId, { limit = 50, before = null } = {}) {
