@@ -1,7 +1,22 @@
+/**
+ * socketServer.js
+ *
+ * Real-time layer: authenticates socket connections and manages:
+ *   - Per-user rooms  (user:<id>)  for direct delivery
+ *   - Per-chat rooms  (chat:<id>)  for broadcast
+ *   - Online presence tracking
+ *   - Typing indicators
+ *
+ * Imports:
+ *   chatService    → getUserChats (load user's rooms on connect)
+ *   messageService → saveMessage  (reserved for future server-side message ops)
+ */
+
 const { Server } = require('socket.io');
 const { verify } = require('../utils/jwt');
 const { getDb } = require('../config/database');
-const { saveMessage, getUserChats } = require('../services/chatService');
+const { getUserChats } = require('../services/chatService');
+const { saveMessage } = require('../services/messageService');
 
 // Track which userIds are currently connected
 const onlineUsers = new Set();
@@ -17,7 +32,7 @@ function initSocket(httpServer) {
     },
   });
 
-  // Auth middleware for socket connections
+  // ── Auth middleware ─────────────────────────────────────────────────────────
   io.use((socket, next) => {
     const token = socket.handshake.auth?.token;
     if (!token) return next(new Error('No token'));
@@ -29,25 +44,23 @@ function initSocket(httpServer) {
       return next(new Error('Invalid token'));
     }
 
-    const db = getDb();
-    const session = db
+    const session = getDb()
       .prepare('SELECT id, revoked FROM sessions WHERE id = ?')
       .get(payload.jti);
 
-    if (!session || session.revoked) {
-      return next(new Error('Session revoked'));
-    }
+    if (!session || session.revoked) return next(new Error('Session revoked'));
 
     socket.data.userId = payload.sub;
     next();
   });
 
+  // ── Connection handler ──────────────────────────────────────────────────────
   io.on('connection', (socket) => {
     const userId = socket.data.userId;
     onlineUsers.add(userId);
     console.log(`[Socket] Connected: ${userId}`);
 
-    // Load user's chats once — reused in connect and disconnect handlers
+    // Load user's chats — used for room joins and presence notifications
     const userChats = getUserChats(userId);
 
     // Update last seen
@@ -55,19 +68,19 @@ function initSocket(httpServer) {
       .prepare('UPDATE users SET last_seen_at = ? WHERE id = ?')
       .run([Date.now(), userId]);
 
-    // Join personal room for direct delivery (new chats, etc.)
+    // Join personal room (for events targeted to this user specifically)
     socket.join(`user:${userId}`);
 
-    // Join all user's chat rooms and notify others this user is online
-    userChats.forEach((chat) => {
+    // Join all chat rooms and announce online presence
+    userChats.forEach(chat => {
       socket.join(`chat:${chat.id}`);
       socket.to(`chat:${chat.id}`).emit('user-online', { userId });
     });
 
-    // Inform the connecting user about which of their contacts are already online
+    // Inform connecting user which of their contacts are already online
     const seenMembers = new Set();
-    userChats.forEach((chat) => {
-      chat.members.forEach((m) => {
+    userChats.forEach(chat => {
+      chat.members.forEach(m => {
         if (m.id !== userId && !seenMembers.has(m.id) && onlineUsers.has(m.id)) {
           socket.emit('user-online', { userId: m.id });
           seenMembers.add(m.id);
@@ -75,13 +88,15 @@ function initSocket(httpServer) {
       });
     });
 
-    // Join a specific chat room (after creating a new chat)
-    socket.on('join-chat', (chatId) => {
+    // ── Events ───────────────────────────────────────────────────────────────
+
+    // Join a specific chat room (called after creating a new chat on the client)
+    socket.on('join-chat', chatId => {
       socket.join(`chat:${chatId}`);
     });
 
-    // Track which chat the user currently has open (for push suppression)
-    socket.on('set-active-chat', (chatId) => {
+    // Track which chat the user currently has open (for read-state / push suppression)
+    socket.on('set-active-chat', chatId => {
       userActiveChat.set(userId, chatId || null);
     });
 
@@ -89,14 +104,11 @@ function initSocket(httpServer) {
     socket.on('typing-start', ({ chatId }) => {
       socket.to(`chat:${chatId}`).emit('user-typing', { userId, chatId });
     });
-
     socket.on('typing-stop', ({ chatId }) => {
-      socket.to(`chat:${chatId}`).emit('user-stopped-typing', {
-        userId,
-        chatId,
-      });
+      socket.to(`chat:${chatId}`).emit('user-stopped-typing', { userId, chatId });
     });
 
+    // ── Disconnect ───────────────────────────────────────────────────────────
     socket.on('disconnect', () => {
       onlineUsers.delete(userId);
       userActiveChat.delete(userId);
@@ -104,8 +116,7 @@ function initSocket(httpServer) {
       getDb()
         .prepare('UPDATE users SET last_seen_at = ? WHERE id = ?')
         .run([lastSeenAt, userId]);
-      // Notify chats that this user went offline
-      userChats.forEach((chat) => {
+      userChats.forEach(chat => {
         io.to(`chat:${chat.id}`).emit('user-offline', { userId, last_seen_at: lastSeenAt });
       });
       console.log(`[Socket] Disconnected: ${userId}`);

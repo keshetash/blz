@@ -1,5 +1,5 @@
 const { getDb } = require('../config/database');
-const { sanitizeUser } = require('./chatService');
+const { sanitizeUser } = require('./userService');
 
 function pairKey(a, b) {
   return a < b ? [a, b] : [b, a];

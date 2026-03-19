@@ -1,12 +1,22 @@
+/**
+ * routes/users.js
+ *
+ * User profile endpoints.
+ * Business logic lives in userService.
+ *
+ * Routes:
+ *   GET    /users/me              — own profile (with private fields)
+ *   PATCH  /users/me              — update own profile
+ *   DELETE /users/me              — permanently delete own account
+ *   GET    /users/check-username  — availability check
+ *   GET    /users/search          — search by username / display_name
+ *   GET    /users/:id             — public profile of another user
+ */
+
 const express = require('express');
 const { authMiddleware } = require('../middleware/auth');
-const {
-  getUserById,
-  updateUser,
-  searchUsers,
-  sanitizeUser,
-  deleteAccount,
-} = require('../services/chatService');
+const { getUserById, updateUser, searchUsers, sanitizeUser } = require('../services/userService');
+const { deleteAccount } = require('../services/chatService');
 
 const router = express.Router();
 router.use(authMiddleware);
@@ -22,7 +32,10 @@ router.get('/me', (req, res) => {
 router.patch('/me', (req, res, next) => {
   try {
     const { username, display_name, avatar_url, bio, birth_date, hide_bio, hide_birth_date, no_group_add } = req.body;
-    const updated = updateUser(req.userId, { username, display_name, avatar_url, bio, birth_date, hide_bio, hide_birth_date, no_group_add });
+    const updated = updateUser(req.userId, {
+      username, display_name, avatar_url, bio,
+      birth_date, hide_bio, hide_birth_date, no_group_add,
+    });
     res.json(sanitizeUser(updated, { showPrivate: true }));
   } catch (err) {
     if (err.message && err.message.includes('UNIQUE')) {
@@ -36,15 +49,16 @@ router.patch('/me', (req, res, next) => {
 router.delete('/me', (req, res, next) => {
   try {
     const { groupNotifications, deletedDirectChatIds, directChatMembersMap } = deleteAccount(req.userId);
+
     const io = req.app.get('io');
     if (io) {
-      // Notify remaining group members: system message
+      // Notify remaining group members via system message
       for (const { chatId, sysMsg, remainingUserIds } of groupNotifications) {
         for (const uid of remainingUserIds) {
           io.to(`user:${uid}`).emit('new-message', sysMsg);
         }
       }
-      // Notify direct chat partners: remove the chat from their list
+      // Notify direct chat partners: remove chat from their list
       for (const chatId of deletedDirectChatIds) {
         for (const uid of directChatMembersMap[chatId] || []) {
           if (uid !== req.userId) {
@@ -52,16 +66,15 @@ router.delete('/me', (req, res, next) => {
           }
         }
       }
-      // Force-disconnect the deleted user's socket session
+      // Force-disconnect the deleted user on all their tabs
       io.to(`user:${req.userId}`).emit('account-deleted');
     }
+
     res.json({ ok: true });
-  } catch (err) {
-    next(err);
-  }
+  } catch (err) { next(err); }
 });
 
-// GET /users/check-username?username=xxx  (auth required so bots can't enumerate)
+// GET /users/check-username?username=xxx
 router.get('/check-username', (req, res) => {
   const username = (req.query.username || '').toLowerCase().trim();
   if (!username || !/^[a-z0-9_]{3,32}$/.test(username)) {
@@ -76,11 +89,10 @@ router.get('/check-username', (req, res) => {
 router.get('/search', (req, res) => {
   const q = (req.query.q || '').trim();
   if (q.length < 2) return res.json([]);
-  const results = searchUsers(q, req.userId);
-  res.json(results);
+  res.json(searchUsers(q, req.userId));
 });
 
-// GET /users/:id
+// GET /users/:id — public profile
 router.get('/:id', (req, res) => {
   const user = getUserById(req.params.id);
   if (!user) return res.status(404).json({ error: 'User not found' });
