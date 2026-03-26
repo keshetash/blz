@@ -28,7 +28,13 @@ export async function getChatMessages(chatId: string): Promise<Message[]> {
 
 export async function sendChatMessage(
   chatId: string,
-  payload: { text?: string; attachment_url?: string; attachment_type?: string; attachment_name?: string },
+  payload: {
+    text?: string;
+    attachment_url?: string;
+    attachment_type?: string;
+    attachment_name?: string;
+    attachment_size?: number | null;  // ✅ file size
+  },
 ): Promise<Message> {
   const res = await client.post<Message>(`/chats/${chatId}/messages`, payload);
   return res.data;
@@ -46,8 +52,10 @@ export async function deleteMessages(chatId: string, messageIds: string[]): Prom
   return res.data.deleted;
 }
 
-export async function leaveGroup(chatId: string): Promise<void> {
-  await client.post(`/chats/${chatId}/leave`);
+/** ✅ Returns closed=true if the requester is the admin (group closed instead of leaving) */
+export async function leaveGroup(chatId: string): Promise<{ ok: boolean; closed?: boolean }> {
+  const res = await client.post<{ ok: boolean; closed?: boolean }>(`/chats/${chatId}/leave`);
+  return res.data;
 }
 
 export async function deleteDirectChat(chatId: string): Promise<void> {
@@ -66,5 +74,44 @@ export async function removeGroupMember(chatId: string, userId: string): Promise
 
 export async function updateGroupChat(chatId: string, payload: { name?: string; description?: string }): Promise<Chat> {
   const res = await client.patch<Chat>(`/chats/${chatId}`, payload);
+  return res.data;
+}
+
+/** ✅ Admin closes the group — no one can send messages anymore */
+export async function closeGroup(chatId: string): Promise<void> {
+  await client.post(`/chats/${chatId}/close`);
+}
+
+/** ✅ Admin transfers admin rights to another member */
+export async function transferAdminRights(chatId: string, newAdminId: string): Promise<Chat> {
+  const res = await client.post<Chat>(`/chats/${chatId}/transfer-admin`, { newAdminId });
+  return res.data;
+}
+
+/** ✅ Update group avatar and broadcast system message */
+export async function updateGroupAvatar(chatId: string, avatarUrl: string): Promise<Chat> {
+  const res = await client.patch<Chat>(`/chats/${chatId}/avatar`, { avatar_url: avatarUrl });
+  return res.data;
+}
+
+// ── Pin / Unpin ───────────────────────────────────────────────────────────────
+
+export async function getPinnedMessages(chatId: string): Promise<import('../types').Message[]> {
+  const res = await client.get(`/chats/${chatId}/messages/pinned`);
+  return res.data;
+}
+
+export async function pinMessage(chatId: string, messageId: string): Promise<import('../types').Message> {
+  const res = await client.post(`/chats/${chatId}/messages/${messageId}/pin`);
+  return res.data;
+}
+
+export async function unpinMessage(chatId: string, messageId: string): Promise<void> {
+  await client.delete(`/chats/${chatId}/messages/${messageId}/pin`);
+}
+
+// ✅ NEW: forward messages to a chat
+export async function forwardMessages(chatId: string, messageIds: string[]): Promise<import('../types').Message[]> {
+  const res = await client.post<import('../types').Message[]>(`/chats/${chatId}/messages/forward`, { messageIds });
   return res.data;
 }

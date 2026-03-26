@@ -13,7 +13,7 @@
 
 const express = require('express');
 const { authMiddleware } = require('../middleware/auth');
-const { getChatMessages, saveMessage, toggleReaction, deleteMessages } = require('../services/messageService');
+const { getChatMessages, saveMessage, toggleReaction, deleteMessages, pinMessage, unpinMessage, getPinnedMessages, forwardMessages } = require('../services/messageService');
 const { getDb } = require('../config/database');
 
 const router = express.Router();
@@ -110,6 +110,65 @@ router.post('/:chatId/messages/:msgId/react', (req, res, next) => {
     }
 
     res.json({ liked_by: likedBy });
+  } catch (err) { next(err); }
+});
+
+// GET /chats/:chatId/messages/pinned
+router.get('/:chatId/messages/pinned', (req, res, next) => {
+  try { res.json(getPinnedMessages(req.params.chatId, req.userId)); }
+  catch (err) { next(err); }
+});
+
+// POST /chats/:chatId/messages/forward  ✅ NEW
+router.post('/:chatId/messages/forward', (req, res, next) => {
+  try {
+    const { messageIds } = req.body;
+    if (!Array.isArray(messageIds) || messageIds.length === 0) {
+      return res.status(400).json({ error: 'messageIds array is required' });
+    }
+    const messages = forwardMessages(req.params.chatId, req.userId, messageIds);
+
+    const io = req.app.get('io');
+    if (io) {
+      const db = getDb();
+      const members = db
+        .prepare('SELECT user_id FROM chat_members WHERE chat_id = ?')
+        .all(req.params.chatId);
+      for (const msg of messages) {
+        for (const m of members) {
+          io.to(`user:${m.user_id}`).emit('new-message', msg);
+        }
+      }
+    }
+    res.status(201).json(messages);
+  } catch (err) { next(err); }
+});
+
+// POST /chats/:chatId/messages/:msgId/pin
+router.post('/:chatId/messages/:msgId/pin', (req, res, next) => {
+  try {
+    const msg = pinMessage(req.params.chatId, req.params.msgId, req.userId);
+    const io = req.app.get('io');
+    if (io) {
+      const { getDb } = require('../config/database');
+      const members = getDb().prepare('SELECT user_id FROM chat_members WHERE chat_id = ?').all(req.params.chatId);
+      for (const m of members) io.to(`user:${m.user_id}`).emit('message-pinned', { chatId: req.params.chatId, message: msg });
+    }
+    res.json(msg);
+  } catch (err) { next(err); }
+});
+
+// DELETE /chats/:chatId/messages/:msgId/pin
+router.delete('/:chatId/messages/:msgId/pin', (req, res, next) => {
+  try {
+    unpinMessage(req.params.chatId, req.params.msgId, req.userId);
+    const io = req.app.get('io');
+    if (io) {
+      const { getDb } = require('../config/database');
+      const members = getDb().prepare('SELECT user_id FROM chat_members WHERE chat_id = ?').all(req.params.chatId);
+      for (const m of members) io.to(`user:${m.user_id}`).emit('message-unpinned', { chatId: req.params.chatId, messageId: req.params.msgId });
+    }
+    res.json({ ok: true });
   } catch (err) { next(err); }
 });
 
